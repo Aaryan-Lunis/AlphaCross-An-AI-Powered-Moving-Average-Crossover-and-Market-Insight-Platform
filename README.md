@@ -1,0 +1,1 @@
+# AlphaCross-An-AI-Powered-Moving-Average-Crossover-and-Market-Insight-Platform
