@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AlphaCross — AI-Driven Moving Average Crossover Analyzer
 
 A full-stack trading signal analyzer that uses XGBoost machine learning to predict moving average crossovers and includes an AI chatbot for trading insights.
@@ -334,3 +335,6 @@ This tool is for educational and research purposes only. Not financial advice. A
 
 **Built with ❤️ for traders and developers**
 
+=======
+# AlphaCross-An-AI-Powered-Moving-Average-Crossover-and-Market-Insight-Platform
+>>>>>>> 5478937cfa7eb65302055eb6ca45a102120f9f4e
