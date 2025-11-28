@@ -4,6 +4,7 @@ A full-stack trading signal analyzer that uses XGBoost machine learning to predi
 
 ## 🎯 Features
 
+
 - **Real-time Stock Data**: Fetches NSE 500 stock prices (last 3 months) using yfinance with end-of-day closing prices (3:30 PM)
 - **ML Predictions**: XGBoost classifier predicts bullish/bearish crossovers within 3 days
 - **Backtesting**: Comprehensive backtest with detailed trade logs and performance metrics on NSE 500 stocks
