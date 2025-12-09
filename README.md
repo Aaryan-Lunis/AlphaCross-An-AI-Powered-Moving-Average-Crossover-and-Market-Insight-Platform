@@ -11,6 +11,7 @@ A full-stack trading signal analyzer that uses XGBoost machine learning to predi
 - **Interactive Dashboard**: ReactJS dashboard with charts, predictions, and chatbot
 - **Dark UI**: Modern dark theme with TailwindCSS
 
+
 ## 🏗️ Architecture
 
 ```
