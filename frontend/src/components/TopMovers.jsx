@@ -15,7 +15,7 @@ const TopMovers = () => {
     setError(null);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/top-movers');
+      const response = await fetch('https://alphacross-ai-powered-moving-average.onrender.com/top-movers');
       
       if (!response.ok) {
         throw new Error('Failed to fetch movers');

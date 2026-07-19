@@ -19,7 +19,7 @@ const UniverseBacktestDashboard = () => {
     setResults(null);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/backtest/universe', {
+      const response = await fetch('https://alphacross-ai-powered-moving-average.onrender.com/backtest/universe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
