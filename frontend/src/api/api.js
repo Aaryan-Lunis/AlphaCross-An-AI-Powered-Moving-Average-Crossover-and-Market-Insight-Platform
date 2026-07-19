@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = 'https://alphacross-ai-powered-moving-average.onrender.com';
+const API_URL =
+  process.env.REACT_APP_API_URL || 'https://alphacross-ai-powered-moving-average.onrender.com';
 
 export const api = {
   // =====================
