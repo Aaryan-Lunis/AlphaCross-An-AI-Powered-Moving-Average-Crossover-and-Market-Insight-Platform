@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StockSelector from '../components/StockSelector';
 import ChartDisplay from '../components/ChartDisplay';
 import PredictionCard from '../components/PredictionCard';
@@ -8,9 +8,9 @@ import TopMovers from '../components/TopMovers';
 import Chatbot from '../components/Chatbot';
 import Loader from '../components/Loader';
 import api from '../api/api';
-import { RefreshCw, AlertCircle, Sparkles, TrendingUp, BarChart3 } from 'lucide-react';
+import { AlertCircle, BarChart3 } from 'lucide-react';
 
-const Dashboard = () => {
+const Dashboard = ({ onStatsChange, registerRefresh, onRefreshingChange }) => {
   const [selectedStock, setSelectedStock] = useState('INFY');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,11 +21,7 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState(null);
 
-  useEffect(() => {
-    loadAllData();
-  }, [selectedStock]);
-
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -41,8 +37,7 @@ const Dashboard = () => {
       setPrediction(pred);
       setBacktest(back);
       setChartData(chart);
-      
-      // Calculate quick stats
+
       if (back && back.summary) {
         setStats({
           winRate: back.summary.win_rate_pct,
@@ -57,12 +52,35 @@ const Dashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedStock]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
+  useEffect(() => {
     loadAllData();
-  };
+  }, [loadAllData]);
+
+  // Expose a refresh trigger to App.jsx's nav bar
+  useEffect(() => {
+    if (registerRefresh) {
+      registerRefresh(() => {
+        setRefreshing(true);
+        loadAllData();
+      });
+    }
+  }, [registerRefresh, loadAllData]);
+
+  // Report stats up to App.jsx's nav bar
+  useEffect(() => {
+    if (onStatsChange) {
+      onStatsChange(stats);
+    }
+  }, [stats, onStatsChange]);
+
+  // Report refreshing state up to App.jsx's nav bar
+  useEffect(() => {
+    if (onRefreshingChange) {
+      onRefreshingChange(refreshing);
+    }
+  }, [refreshing, onRefreshingChange]);
 
   const handleStockChange = (symbol) => {
     setSelectedStock(symbol);
@@ -79,53 +97,6 @@ const Dashboard = () => {
         <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-pink-500/5 rounded-full blur-3xl"></div>
-      </div>
-
-      {/* Header */}
-      <div className="relative bg-gray-900/30 border-b border-gray-800 backdrop-blur-md sticky top-0 z-20 shadow-xl">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient">
-                  AlphaCross
-                </h1>
-                <p className="text-sm text-gray-400 mt-1 flex items-center gap-2">
-                  <Sparkles className="w-3 h-3 text-yellow-400 animate-pulse" />
-                  AI-Powered Moving Average Crossover Analyzer
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {stats && (
-                <div className="hidden md:flex items-center gap-4 px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700">
-                  <div className="text-center">
-                    <p className="text-xs text-gray-400">Win Rate</p>
-                    <p className="text-sm font-bold text-green-400">{stats.winRate.toFixed(1)}%</p>
-                  </div>
-                  <div className="w-px h-6 bg-gray-700"></div>
-                  <div className="text-center">
-                    <p className="text-xs text-gray-400">Return</p>
-                    <p className={`text-sm font-bold ${stats.totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {stats.totalReturn >= 0 ? '+' : ''}{stats.totalReturn.toFixed(2)}%
-                    </p>
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="group flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-4 py-2 rounded-xl border border-blue-500/30 transition-all duration-300 disabled:opacity-50 shadow-lg hover:shadow-xl hover:scale-105 transform"
-              >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                <span className="text-sm font-medium">Refresh</span>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="relative max-w-7xl mx-auto px-6 py-8">
@@ -274,18 +245,6 @@ const Dashboard = () => {
         }
         .animate-slide-down {
           animation: slide-down 0.4s ease-out;
-        }
-        .animate-gradient {
-          background-size: 200% 200%;
-          animation: gradient 3s ease infinite;
-        }
-        @keyframes gradient {
-          0%, 100% {
-            background-position: 0% 50%;
-          }
-          50% {
-            background-position: 100% 50%;
-          }
         }
       `}</style>
     </div>
