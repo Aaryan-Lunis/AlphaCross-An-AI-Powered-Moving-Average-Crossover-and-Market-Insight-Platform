@@ -1,261 +1,293 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Filter, Search, ArrowUpCircle, ArrowDownCircle, Loader2 } from 'lucide-react';
-import api from '../api/api';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Play, RefreshCw, Search, SearchX, X } from 'lucide-react';
+import PageHeader from '../components/layout/PageHeader';
+import Button from '../components/ui/Button';
+import { Input, Select } from '../components/ui/Input';
+import Segmented from '../components/ui/Segmented';
+import DataTable from '../components/ui/DataTable';
+import Skeleton from '../components/ui/Skeleton';
+import { TrendBadge } from '../components/ui/Badge';
+import { EmptyState, ErrorState } from '../components/ui/States';
+import { SummaryCard, SummaryStrip } from '../components/SummaryCard';
+import { getScreenState, runScreen, subscribeScreen } from '../lib/screenStore';
+import { emaSpreadPct } from '../lib/signals';
+import { fmtDateTime, fmtElapsed, pct, plain, toneClass, toneOf } from '../lib/format';
 
-const ScreeningResults = ({ onSelectStock }) => {
-  const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [maxStocks, setMaxStocks] = useState(500); // Changed from 50 to 500
+const SCOPES = [
+  { value: 100, label: 'First 100 stocks' },
+  { value: 250, label: 'First 250 stocks' },
+  { value: 500, label: 'All 500 stocks' },
+];
 
+const SIGNAL_ORDER = { bullish: 0, neutral: 1, bearish: 2 };
+
+const ScreeningResults = () => {
+  const navigate = useNavigate();
+  const st = useSyncExternalStore(subscribeScreen, getScreenState);
+  const [scope, setScope] = useState(st.scope);
+  const [signal, setSignal] = useState('all');
+  const [sector, setSector] = useState('all');
+  const [q, setQ] = useState('');
+  const [now, setNow] = useState(Date.now());
+
+  // First visit with nothing cached: start a scan, as before.
   useEffect(() => {
-    runScreening();
+    const s = getScreenState();
+    if (s.status === 'idle' && !s.data) runScreen(s.scope);
   }, []);
 
-  const runScreening = async () => {
-    setLoading(true);
-    try {
-      const config = {
-        max_stocks: maxStocks, // This will now be 500
-        criteria: 'ema_crossover'
-      };
-      const data = await api.screenUniverse(config);
-      console.log("SCREENING RESPONSE");
-      console.log(data);
-      console.log("Timestamp:", data.timestamp);
-      console.log("==================");
+  useEffect(() => {
+    if (st.status !== 'running') return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [st.status]);
 
-setResults(data);
-    } catch (error) {
-      console.error('Error screening universe:', error);
-    } finally {
-      setLoading(false);
-    }
+  const data = st.data;
+  const rows = useMemo(() => {
+    if (!data) return [];
+    return ['bullish', 'bearish', 'neutral'].flatMap((sig) =>
+      (data[sig] || []).map((r) => ({ ...r, signal: sig, spread: emaSpreadPct(r.ema_20, r.ema_50) }))
+    );
+  }, [data]);
+
+  const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector).filter(Boolean))].sort(), [rows]);
+
+  const filtered = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        (signal === 'all' || r.signal === signal) &&
+        (sector === 'all' || r.sector === sector) &&
+        (!t || r.symbol.toLowerCase().includes(t) || (r.sector || '').toLowerCase().includes(t))
+    );
+  }, [rows, signal, sector, q]);
+
+  const counts = data?.counts || { bullish: 0, bearish: 0, neutral: 0 };
+  const total = counts.bullish + counts.bearish + counts.neutral;
+  const share = (n) => (total ? `${((n / total) * 100).toFixed(0)}% of scanned` : undefined);
+
+  const activeFilters = [
+    signal !== 'all' && { key: 'signal', label: `Signal: ${signal[0].toUpperCase()}${signal.slice(1)}`, clear: () => setSignal('all') },
+    sector !== 'all' && { key: 'sector', label: `Sector: ${sector}`, clear: () => setSector('all') },
+    q.trim() && { key: 'q', label: `Search: “${q.trim()}”`, clear: () => setQ('') },
+  ].filter(Boolean);
+  const clearAll = () => {
+    setSignal('all');
+    setSector('all');
+    setQ('');
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-400 mx-auto mb-4" />
-          <p className="text-lg text-gray-300">Screening NSE 500 universe...</p>
-          <p className="text-sm text-gray-500 mt-2">Analyzing up to {maxStocks} stocks - This may take 2-3 minutes</p>
-          <div className="mt-4 max-w-md mx-auto">
-            <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-500 to-purple-600 animate-pulse" style={{width: '100%'}}></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const columns = [
+    {
+      key: 'symbol',
+      header: 'Symbol',
+      sortable: true,
+      mono: true,
+      render: (r) => <span className="font-medium text-ink">{r.symbol}</span>,
+    },
+    { key: 'sector', header: 'Sector', sortable: true, render: (r) => <span className="text-ink-2">{r.sector}</span> },
+    { key: 'close', header: 'Close', align: 'right', sortable: true, mono: true, render: (r) => plain(r.close) },
+    { key: 'ema_20', header: 'EMA 20', align: 'right', sortable: true, mono: true, render: (r) => plain(r.ema_20) },
+    { key: 'ema_50', header: 'EMA 50', align: 'right', sortable: true, mono: true, render: (r) => plain(r.ema_50) },
+    {
+      key: 'spread',
+      header: 'EMA spread',
+      align: 'right',
+      sortable: true,
+      mono: true,
+      render: (r) => <span className={toneClass[toneOf(r.spread)]}>{pct(r.spread, 2, { sign: true })}</span>,
+    },
+    {
+      key: 'signal',
+      header: 'Trend',
+      sortable: true,
+      sortValue: (r) => SIGNAL_ORDER[r.signal],
+      render: (r) => <TrendBadge trend={r.signal} />,
+    },
+  ];
 
-  if (!results) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center">
-        <p className="text-gray-400">No screening results available</p>
-      </div>
-    );
-  }
-
-  const filterStocks = (stocks) => {
-    if (!searchTerm) return stocks;
-    return stocks.filter(stock => 
-      stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      stock.sector.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  };
-
-  const displayedStocks = filter === 'all' 
-    ? [...filterStocks(results.bullish), ...filterStocks(results.bearish), ...filterStocks(results.neutral)]
-    : filterStocks(results[filter] || []);
+  const running = st.status === 'running';
+  const scanLabel = SCOPES.find((s) => s.value === st.scope)?.label.toLowerCase() || `${st.scope} stocks`;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                NSE 500 Screening Results
-              </h1>
-              <p className="text-gray-400">Real-time EMA crossover analysis across the universe</p>
-            </div>
-            <button
-              onClick={runScreening}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-semibold transition-all disabled:opacity-50 shadow-lg"
-            >
-              {loading ? 'Scanning...' : 'Refresh Scan'}
-            </button>
+    <div>
+      <PageHeader
+        title="Screener"
+        description="NSE 500 stocks by EMA 20/50 trend on the latest close. A bullish stock has EMA 20 above EMA 50; it is not necessarily a fresh crossover."
+        actions={
+          <>
+            <Select value={scope} onChange={(e) => setScope(Number(e.target.value))} aria-label="Scan size" disabled={running}>
+              {SCOPES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+            <Button variant="primary" onClick={() => runScreen(scope)} disabled={running}>
+              {running ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              {running ? 'Scanning…' : data ? 'Run new scan' : 'Run scan'}
+            </Button>
+          </>
+        }
+      />
+
+      {running && (
+        <div className="card mb-6 px-5 py-4" role="status" aria-live="polite">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-body font-medium text-ink">Scanning {scanLabel}</p>
+            <p className="num text-ui text-ink-2">{fmtElapsed(now - st.startedAt)}</p>
+          </div>
+          <p className="mt-0.5 text-ui text-ink-2">
+            Fetching prices and computing EMAs for each stock. A full scan usually takes 2–3 minutes, and you can leave
+            this page while it runs.
+          </p>
+          <div className="relative mt-3 h-1 overflow-hidden rounded-full bg-elevated">
+            <div className="absolute inset-y-0 w-1/3 animate-[scan_1.6s_ease-in-out_infinite] rounded-full bg-accent-hi" />
+          </div>
+          <style>{`@keyframes scan { 0% { left: -33%; } 100% { left: 100%; } }`}</style>
+        </div>
+      )}
+
+      {st.status === 'error' && (
+        <div className="card mb-6">
+          <ErrorState
+            compact
+            title="The scan failed"
+            message={
+              st.error?.response?.data?.detail ||
+              'The screener request did not complete. Check that the backend is reachable, then try again.'
+            }
+            onRetry={() => runScreen(scope)}
+          />
+        </div>
+      )}
+
+      {!data && running && (
+        <div className="space-y-6">
+          <div className="card grid grid-cols-2 gap-px overflow-hidden lg:grid-cols-4" style={{ background: 'rgb(var(--line))' }}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="bg-card px-4 py-3.5">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="mt-3 h-6 w-16" />
+              </div>
+            ))}
+          </div>
+          <div className="card p-5">
+            <Skeleton className="h-64 w-full" />
           </div>
         </div>
+      )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-xl p-6 border border-green-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-400">Bullish Signals</p>
-              <ArrowUpCircle className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-3xl font-bold text-green-400">{results.counts.bullish}</p>
-            <p className="text-xs text-gray-500 mt-1">EMA 20 &gt; EMA 50</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-red-500/20 to-red-600/10 rounded-xl p-6 border border-red-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-400">Bearish Signals</p>
-              <ArrowDownCircle className="w-5 h-5 text-red-400" />
-            </div>
-            <p className="text-3xl font-bold text-red-400">{results.counts.bearish}</p>
-            <p className="text-xs text-gray-500 mt-1">EMA 20 &lt; EMA 50</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-gray-500/20 to-gray-600/10 rounded-xl p-6 border border-gray-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-400">Neutral</p>
-              <Minus className="w-5 h-5 text-gray-400" />
-            </div>
-            <p className="text-3xl font-bold text-gray-400">{results.counts.neutral}</p>
-            <p className="text-xs text-gray-500 mt-1">No clear signal</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-xl p-6 border border-blue-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-400">Total Analyzed</p>
-              <Filter className="w-5 h-5 text-blue-400" />
-            </div>
-            <p className="text-3xl font-bold text-blue-400">
-              {results.counts.bullish + results.counts.bearish + results.counts.neutral}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {maxStocks === 500 ? 'Full NSE 500 scan' : `Top ${maxStocks} stocks`}
-            </p>
-          </div>
+      {!data && !running && st.status !== 'error' && (
+        <div className="card">
+          <EmptyState
+            title="No scan results yet"
+            description="Run a scan to see which NSE 500 stocks have EMA 20 above or below EMA 50."
+            action={
+              <Button variant="primary" onClick={() => runScreen(scope)}>
+                <Play className="h-4 w-4" />
+                Run scan
+              </Button>
+            }
+          />
         </div>
+      )}
 
-        {/* Filters and Search */}
-        <div className="bg-gray-800/50 rounded-xl p-4 mb-6 border border-gray-700 flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg transition-all ${
-                filter === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              All Stocks
-            </button>
-            <button
-              onClick={() => setFilter('bullish')}
-              className={`px-4 py-2 rounded-lg transition-all ${
-                filter === 'bullish'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Bullish ({results.counts.bullish})
-            </button>
-            <button
-              onClick={() => setFilter('bearish')}
-              className={`px-4 py-2 rounded-lg transition-all ${
-                filter === 'bearish'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Bearish ({results.counts.bearish})
-            </button>
-            <button
-              onClick={() => setFilter('neutral')}
-              className={`px-4 py-2 rounded-lg transition-all ${
-                filter === 'neutral'
-                  ? 'bg-gray-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Neutral ({results.counts.neutral})
-            </button>
-          </div>
+      {data && (
+        <div className={`space-y-6 ${running ? 'opacity-60' : ''}`} aria-busy={running}>
+          <SummaryStrip>
+            <SummaryCard label="Bullish" value={counts.bullish} hint={share(counts.bullish)} tone="pos" />
+            <SummaryCard label="Bearish" value={counts.bearish} hint={share(counts.bearish)} tone="neg" />
+            <SummaryCard label="Neutral" value={counts.neutral} hint={share(counts.neutral)} />
+            <SummaryCard label="Stocks scanned" value={total} hint={`Scanned ${fmtDateTime(data.timestamp)}`} />
+          </SummaryStrip>
 
-          <div className="relative w-full md:w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search symbol or sector..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+          <section className="card overflow-hidden" aria-label="Screening results">
+            <div className="flex flex-col gap-3 border-b border-line p-4 lg:flex-row lg:items-center lg:justify-between">
+              <Segmented
+                label="Trend filter"
+                value={signal}
+                onChange={setSignal}
+                options={[
+                  { value: 'all', label: 'All', count: total },
+                  { value: 'bullish', label: 'Bullish', count: counts.bullish },
+                  { value: 'bearish', label: 'Bearish', count: counts.bearish },
+                  { value: 'neutral', label: 'Neutral', count: counts.neutral },
+                ]}
+                className="self-start"
+              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Select value={sector} onChange={(e) => setSector(e.target.value)} aria-label="Filter by sector" className="sm:w-52">
+                  <option value="all">All sectors</option>
+                  {sectors.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  icon={Search}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search symbol or sector"
+                  aria-label="Search symbol or sector"
+                  className="sm:w-64"
+                />
+              </div>
+            </div>
+
+            {activeFilters.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5">
+                <span className="text-meta text-ink-3">
+                  Showing <span className="num text-ink-2">{filtered.length}</span> of <span className="num">{total}</span>
+                </span>
+                {activeFilters.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={f.clear}
+                    className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-1 text-meta font-medium text-accent-hi hover:bg-accent-soft/70"
+                    aria-label={`Remove filter ${f.label}`}
+                  >
+                    {f.label}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+                <button type="button" onClick={clearAll} className="ml-1 rounded text-meta text-ink-2 underline-offset-2 hover:text-ink hover:underline">
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            <DataTable
+              columns={columns}
+              rows={filtered}
+              rowKey={(r) => r.symbol}
+              onRowClick={(r) => navigate(`/analysis/${r.symbol}`)}
+              defaultSort={{ key: 'spread', dir: 'desc' }}
+              pageSize={50}
+              caption="NSE 500 screening results"
+              empty={
+                <EmptyState
+                  icon={SearchX}
+                  title="No stocks match these filters"
+                  description="Try a different trend, sector or search term."
+                  action={
+                    <Button size="sm" onClick={clearAll}>
+                      Clear filters
+                    </Button>
+                  }
+                />
+              }
             />
-          </div>
+          </section>
+
+          <p className="text-meta text-ink-3">
+            EMA spread is EMA 20 relative to EMA 50. Select a row to open the full analysis.
+          </p>
         </div>
-
-        {/* Results Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {displayedStocks.map((stock, idx) => {
-            const signal = stock.signal || 
-              (results.bullish.includes(stock) ? 'bullish' : 
-               results.bearish.includes(stock) ? 'bearish' : 'neutral');
-
-            return (
-              <button
-                key={idx}
-                onClick={() => onSelectStock && onSelectStock(stock.symbol)}
-                className={`group text-left p-4 rounded-xl border-2 transition-all hover:scale-105 hover:shadow-xl ${
-                  signal === 'bullish'
-                    ? 'bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/30 hover:border-green-400'
-                    : signal === 'bearish'
-                    ? 'bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/30 hover:border-red-400'
-                    : 'bg-gradient-to-br from-gray-500/10 to-gray-600/5 border-gray-500/30 hover:border-gray-400'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">
-                      {stock.symbol}
-                    </h3>
-                    <p className="text-xs text-gray-400">{stock.sector}</p>
-                  </div>
-                  {signal === 'bullish' ? (
-                    <TrendingUp className="w-5 h-5 text-green-400" />
-                  ) : signal === 'bearish' ? (
-                    <TrendingDown className="w-5 h-5 text-red-400" />
-                  ) : (
-                    <Minus className="w-5 h-5 text-gray-400" />
-                  )}
-                </div>
-                <div className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                  signal === 'bullish'
-                    ? 'bg-green-500/20 text-green-300'
-                    : signal === 'bearish'
-                    ? 'bg-red-500/20 text-red-300'
-                    : 'bg-gray-500/20 text-gray-300'
-                }`}>
-                  {signal.toUpperCase()}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {displayedStocks.length === 0 && (
-          <div className="text-center py-12 text-gray-400">
-            <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>No stocks found matching your criteria</p>
-          </div>
-        )}
-
-        {/* Info footer */}
-        {results.timestamp && (
-          <div className="mt-8 text-center text-sm text-gray-500">
-            <p>Last scanned: {new Date(results.timestamp).toLocaleString()}</p>
-            <p className="mt-1">Analyzing {maxStocks} stocks from NSE 500 • Processing time: ~2-3 minutes</p>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

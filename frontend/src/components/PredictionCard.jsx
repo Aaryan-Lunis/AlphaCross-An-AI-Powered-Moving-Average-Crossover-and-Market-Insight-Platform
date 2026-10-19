@@ -1,224 +1,133 @@
 import React from 'react';
-import { Zap, TrendingUp, TrendingDown, Minus, Info, Brain, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, MessageSquare } from 'lucide-react';
+import Button from './ui/Button';
+import Skeleton from './ui/Skeleton';
+import { ErrorState } from './ui/States';
+import { fmtDate, plain } from '../lib/format';
 
-const PredictionCard = ({ prediction, symbol }) => {
-  if (!prediction) {
-    return (
-      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 border-2 border-gray-700 shadow-2xl animate-pulse">
-        <div className="h-64 flex items-center justify-center text-gray-400">
-          <div className="text-center">
-            <Zap className="w-8 h-8 mx-auto mb-2 animate-pulse" />
-            <p>Loading prediction...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+const TREND = {
+  BULLISH: { label: 'Bullish', text: 'text-pos', bar: 'bg-pos', blurb: 'EMA 20 is above EMA 50 and rising.' },
+  BEARISH: { label: 'Bearish', text: 'text-neg', bar: 'bg-neg', blurb: 'EMA 20 is below EMA 50 and falling.' },
+  NEUTRAL: { label: 'No clear trend', text: 'text-ink-2', bar: 'bg-ink-3', blurb: 'EMA 20 and its slope do not agree.' },
+};
 
-  // Determine colors based on prediction
-  const getColors = () => {
-    switch (prediction.prediction) {
-      case 'BULLISH':
-        return {
-          bg: 'from-green-500/20 to-green-600/10',
-          border: 'border-green-500/50',
-          text: 'text-green-400',
-          icon: 'text-green-400',
-          glow: 'shadow-green-500/20',
-          badge: 'bg-green-500/20 text-green-300 border-green-500/30'
-        };
-      case 'BEARISH':
-        return {
-          bg: 'from-red-500/20 to-red-600/10',
-          border: 'border-red-500/50',
-          text: 'text-red-400',
-          icon: 'text-red-400',
-          glow: 'shadow-red-500/20',
-          badge: 'bg-red-500/20 text-red-300 border-red-500/30'
-        };
-      default: // NEUTRAL
-        return {
-          bg: 'from-gray-500/20 to-gray-600/10',
-          border: 'border-gray-500/50',
-          text: 'text-gray-400',
-          icon: 'text-gray-400',
-          glow: 'shadow-gray-500/20',
-          badge: 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-        };
-    }
-  };
-
-  const colors = getColors();
-
-  // Get appropriate icon
-  const getIcon = () => {
-    switch (prediction.prediction) {
-      case 'BULLISH':
-        return <TrendingUp className={`w-6 h-6 ${colors.icon}`} />;
-      case 'BEARISH':
-        return <TrendingDown className={`w-6 h-6 ${colors.icon}`} />;
-      default:
-        return <Minus className={`w-6 h-6 ${colors.icon}`} />;
-    }
-  };
-
-  const confidencePercentage = (prediction.confidence * 100).toFixed(0);
+const PredictionCard = ({ prediction, loading, error, onRetry, symbol, asOf, onAsk }) => {
+  const trend = prediction ? TREND[prediction.prediction] || TREND.NEUTRAL : null;
+  const factors = prediction?.explainability?.top_factors || [];
+  const maxImpact = Math.max(0.0001, ...factors.map((f) => Math.abs(f.impact)));
+  const confidencePct = prediction ? Math.round(prediction.confidence * 100) : 0;
 
   return (
-    <div className={`bg-gradient-to-br ${colors.bg} rounded-2xl p-6 border-2 ${colors.border} shadow-2xl ${colors.glow} backdrop-blur-sm hover:scale-[1.02] transition-all`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-lg`}>
-            <Zap className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">ML Prediction</h2>
-            <p className="text-xs text-gray-400">XGBoost Model</p>
-          </div>
-        </div>
-        <button className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors group">
-          <Info className="w-5 h-5 text-gray-400 group-hover:text-white" />
-        </button>
+    <section className="card flex h-full flex-col" aria-label="Model output">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
+        <h2 className="text-body font-semibold text-ink">Model output</h2>
+        {asOf && <span className="text-meta text-ink-3">As of {fmtDate(asOf)}</span>}
       </div>
 
-      {/* Prediction Display */}
-      <div className="text-center mb-6">
-        <div className="mb-4 flex justify-center">
-          <div className={`p-4 rounded-full ${colors.bg} border-2 ${colors.border}`}>
-            {getIcon()}
-          </div>
-        </div>
-        
-        <h3 className={`text-4xl font-bold mb-2 ${colors.text}`}>
-          {prediction.prediction}
-        </h3>
-        
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-sm text-yellow-400">✨</span>
-          <span className="text-sm text-gray-400">AI Powered</span>
-        </div>
-      </div>
-
-      {/* Confidence Bar */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-400">Model Confidence</span>
-          <span className={`text-lg font-bold ${colors.text}`}>{confidencePercentage}%</span>
-        </div>
-        <div className="relative h-3 bg-gray-700/50 rounded-full overflow-hidden">
-          <div
-            className={`absolute top-0 left-0 h-full ${
-              prediction.prediction === 'BULLISH'
-                ? 'bg-gradient-to-r from-green-500 to-green-600'
-                : prediction.prediction === 'BEARISH'
-                ? 'bg-gradient-to-r from-red-500 to-red-600'
-                : 'bg-gradient-to-r from-gray-500 to-gray-600'
-            } transition-all duration-1000 ease-out`}
-            style={{ width: `${confidencePercentage}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-xs text-gray-500">Low</span>
-          <span className="text-xs text-gray-500">High</span>
-        </div>
-      </div>
-
-      {/* Technical Indicators */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-green-500/20 rounded">
-              <TrendingUp className="w-4 h-4 text-green-400" />
-            </div>
-            <span className="text-sm text-gray-400">EMA 20</span>
-          </div>
-          <span className="text-sm font-semibold text-white">₹{prediction.ema_20}</span>
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-orange-500/20 rounded">
-              <TrendingUp className="w-4 h-4 text-orange-400" />
-            </div>
-            <span className="text-sm text-gray-400">EMA 50</span>
-          </div>
-          <span className="text-sm font-semibold text-white">₹{prediction.ema_50}</span>
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-          <div className="flex items-center gap-2">
-            <div className={`p-1 ${
-              prediction.rsi > 70 
-                ? 'bg-red-500/20' 
-                : prediction.rsi < 30 
-                ? 'bg-green-500/20' 
-                : 'bg-purple-500/20'
-            } rounded`}>
-              <Zap className={`w-4 h-4 ${
-                prediction.rsi > 70 
-                  ? 'text-red-400' 
-                  : prediction.rsi < 30 
-                  ? 'text-green-400' 
-                  : 'text-purple-400'
-              }`} />
-            </div>
-            <span className="text-sm text-gray-400">RSI</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-semibold ${
-              prediction.rsi > 70 
-                ? 'text-red-400' 
-                : prediction.rsi < 30 
-                ? 'text-green-400' 
-                : 'text-purple-400'
-            }`}>
-              {prediction.rsi}
-            </span>
-            <span className="text-xs text-gray-500">
-              {prediction.rsi > 70 ? 'Overbought' : prediction.rsi < 30 ? 'Oversold' : 'Neutral'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Explainable AI: Top Contributing Factors */}
-      {prediction.explainability?.top_factors?.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-gray-700">
-          <div className="flex items-center gap-2 mb-3">
-            <Brain className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-semibold text-gray-300">Why this prediction?</span>
-          </div>
-          <div className="space-y-2">
-            {prediction.explainability.top_factors.map((factor, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 text-gray-400">
-                  {factor.direction === 'positive' ? (
-                    <ArrowUpRight className="w-3.5 h-3.5 text-green-400" />
-                  ) : (
-                    <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />
-                  )}
-                  <span>{factor.feature}</span>
-                </div>
-                <span className={factor.direction === 'positive' ? 'text-green-400' : 'text-red-400'}>
-                  {factor.direction === 'positive' ? '+' : ''}{factor.impact}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-gray-500 mt-2">SHAP feature attribution • XGBoost</p>
+      {loading && (
+        <div className="space-y-4 p-5" role="status" aria-label="Loading model output">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-2 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-28 w-full" />
         </div>
       )}
 
-      {/* Signal Badge */}
-      <div className="mt-6 text-center">
-        <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${colors.badge} border`}>
-          {prediction.prediction === 'BULLISH' && '🚀 Strong Buy Signal'}
-          {prediction.prediction === 'BEARISH' && '⚠️ Strong Sell Signal'}
-          {prediction.prediction === 'NEUTRAL' && '⏸️ Hold Position'}
-        </span>
-      </div>
-    </div>
+      {!loading && error && (
+        <ErrorState compact title="Model output unavailable" message="The prediction could not be loaded." onRetry={onRetry} />
+      )}
+
+      {!loading && !error && prediction && (
+        <div className="flex flex-1 flex-col p-5">
+          <p className={`text-title font-semibold ${trend.text}`}>{trend.label}</p>
+          <p className="mt-0.5 text-ui text-ink-2">{trend.blurb}</p>
+
+          <div className="mt-5">
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <span className="text-ui text-ink-2">Confidence score</span>
+              <span className="num text-body font-medium text-ink">{confidencePct}%</span>
+            </div>
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-elevated"
+              role="progressbar"
+              aria-valuenow={confidencePct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Confidence score"
+            >
+              <div className={`h-full rounded-full ${trend.bar}`} style={{ width: `${confidencePct}%` }} />
+            </div>
+          </div>
+
+          <dl className="mt-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line text-center">
+            {[
+              ['EMA 20', plain(prediction.ema_20)],
+              ['EMA 50', plain(prediction.ema_50)],
+              ['RSI', plain(prediction.rsi, 1)],
+            ].map(([k, v]) => (
+              <div key={k} className="bg-card px-2 py-2.5">
+                <dt className="text-meta text-ink-3">{k}</dt>
+                <dd className="num mt-0.5 text-ui font-medium text-ink">{v}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {factors.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-ui font-medium text-ink">What drove it</h3>
+              <ul className="mt-2.5 space-y-2.5">
+                {factors.map((f) => {
+                  const positive = f.direction === 'positive';
+                  return (
+                    <li key={f.feature}>
+                      <div className="flex items-center justify-between gap-2 text-ui">
+                        <span className="flex min-w-0 items-center gap-1.5 text-ink-2">
+                          {positive ? (
+                            <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0 text-pos" aria-label="pushes up" />
+                          ) : (
+                            <ArrowDownRight className="h-3.5 w-3.5 flex-shrink-0 text-neg" aria-label="pushes down" />
+                          )}
+                          <span className="truncate">{f.feature}</span>
+                        </span>
+                        <span className={`num text-meta ${positive ? 'text-pos' : 'text-neg'}`}>
+                          {positive ? '+' : '−'}
+                          {Math.abs(f.impact).toFixed(3)}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-elevated">
+                        <div
+                          className={`h-full rounded-full ${positive ? 'bg-pos/70' : 'bg-neg/70'}`}
+                          style={{ width: `${(Math.abs(f.impact) / maxImpact) * 100}%` }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2 text-meta text-ink-3">Feature attribution from an XGBoost model, explained with SHAP.</p>
+            </div>
+          )}
+
+          <details className="mt-5 text-ui text-ink-2">
+            <summary className="cursor-pointer select-none rounded text-ink-2 hover:text-ink">How this is calculated</summary>
+            <p className="mt-2 text-meta text-ink-3">
+              The trend label and confidence score come from the EMA 20/50 trend rule: EMA 20 against EMA 50, plus the
+              slope of EMA 20. The confidence score is a heuristic, not a probability. This is model output, not
+              investment advice.
+            </p>
+          </details>
+
+          {onAsk && (
+            <div className="mt-auto pt-5">
+              <Button variant="subtle" className="w-full" onClick={onAsk}>
+                <MessageSquare className="h-4 w-4" />
+                Ask the assistant about {symbol}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 };
 

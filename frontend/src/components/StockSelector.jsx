@@ -1,156 +1,149 @@
-import React, { useState, useEffect } from 'react';
-import { Search, TrendingUp, Sparkles } from 'lucide-react';
-import api from '../api/api';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
+import { POPULAR, useStockList } from '../hooks/useStockList';
 
-const StockSelector = ({ selected, onSelect }) => {
-  const [stocks, setStocks] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredStocks, setFilteredStocks] = useState([]);
-  const [loading, setLoading] = useState(true);
+// Search any NSE 500 stock, or jump to a quick pick.
+const StockSelector = ({
+  value,
+  onChange,
+  chips = POPULAR.slice(0, 8),
+  chipsLabel = 'Quick picks',
+  placeholder,
+  className = '',
+  id = 'stock-selector',
+}) => {
+  const { stocks, loading } = useStockList();
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const boxRef = useRef(null);
 
-  // Popular stocks for quick access
-  const popularStocks = [
-    'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
-    'BHARTIARTL', 'ITC', 'KOTAKBANK', 'LT', 'HINDUNILVR', 'AXISBANK'
-  ];
+  const results = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return [];
+    const starts = [];
+    const rest = [];
+    for (const s of stocks) {
+      const sym = s.Symbol.toLowerCase();
+      if (sym.startsWith(t)) starts.push(s);
+      else if (sym.includes(t) || (s.Industry || '').toLowerCase().includes(t)) rest.push(s);
+    }
+    return [...starts, ...rest].slice(0, 8);
+  }, [q, stocks]);
+
+  useEffect(() => setActive(0), [q]);
 
   useEffect(() => {
-    loadStocks();
+    const onClick = (e) => boxRef.current && !boxRef.current.contains(e.target) && setOpen(false);
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = stocks.filter(stock =>
-        stock.Symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (stock.Industry && stock.Industry.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-      setFilteredStocks(filtered.slice(0, 20));
-    } else {
-      setFilteredStocks([]);
-    }
-  }, [searchTerm, stocks]);
+  const pick = (sym) => {
+    setQ('');
+    setOpen(false);
+    onChange(sym);
+  };
 
-  const loadStocks = async () => {
-    try {
-      const response = await api.getNSE500List();
-      setStocks(response.stocks || []);
-    } catch (error) {
-      console.error('Error loading stocks:', error);
-      // Fallback to popular stocks if API fails
-      setStocks(popularStocks.map(symbol => ({ Symbol: symbol, Industry: 'N/A' })));
-    } finally {
-      setLoading(false);
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((a) => Math.min(results.length - 1, a + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((a) => Math.max(0, a - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (results[active]) pick(results[active].Symbol);
+      else if (q.trim()) pick(q.trim().toUpperCase());
+    } else if (e.key === 'Escape') {
+      setOpen(false);
     }
   };
 
+  const showList = open && q.trim().length > 0;
+
   return (
-    <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 border-2 border-gray-700 shadow-2xl backdrop-blur-sm">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-            <TrendingUp className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-white">Select Stock</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              {stocks.length} stocks available
-            </p>
-          </div>
-        </div>
-        <Sparkles className="w-6 h-6 text-yellow-400 animate-pulse" />
-      </div>
-
-      {/* Search Bar */}
-      <div className="relative mb-6">
-        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+    <div className={className}>
+      <div ref={boxRef} className="relative">
+        <label htmlFor={id} className="sr-only">
+          Select a stock
+        </label>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden="true" />
         <input
-          type="text"
-          placeholder="Search stocks by name or symbol..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-12 pr-4 py-3 bg-gray-900/50 border-2 border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-all"
+          id={id}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={`${id}-list`}
+          aria-autocomplete="list"
+          placeholder={placeholder || `Viewing ${value} — search symbol or sector`}
+          className="field h-10 pl-9"
+          autoComplete="off"
+          spellCheck="false"
         />
+        {showList && (
+          <ul
+            id={`${id}-list`}
+            role="listbox"
+            className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-lg border border-line bg-elevated py-1 shadow-pop"
+          >
+            {results.length === 0 && (
+              <li className="px-3 py-3 text-ui text-ink-2">
+                {loading ? 'Loading stock list…' : 'No stock matches that search.'}
+              </li>
+            )}
+            {results.map((s, i) => (
+              <li
+                key={s.Symbol}
+                role="option"
+                aria-selected={i === active}
+                onMouseEnter={() => setActive(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(s.Symbol);
+                }}
+                className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2 ${
+                  i === active ? 'bg-accent-soft' : ''
+                }`}
+              >
+                <span className="num text-ui font-medium text-ink">{s.Symbol}</span>
+                <span className="truncate text-meta text-ink-3">{s.Industry}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {/* Search Results Dropdown */}
-      {searchTerm && filteredStocks.length > 0 && (
-        <div className="mb-4 max-h-60 overflow-y-auto bg-gray-900/80 rounded-xl border border-gray-700 custom-scrollbar">
-          {filteredStocks.map((stock, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                onSelect(stock.Symbol);
-                setSearchTerm('');
-              }}
-              className="w-full text-left px-4 py-3 hover:bg-blue-500/10 transition-colors border-b border-gray-800 last:border-b-0 group"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-white group-hover:text-blue-400 transition-colors">
-                    {stock.Symbol}
-                  </p>
-                  <p className="text-xs text-gray-400">{stock.Industry || 'N/A'}</p>
-                </div>
-                {selected === stock.Symbol && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                )}
-              </div>
-            </button>
-          ))}
+      {chips && chips.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-meta text-ink-3">{chipsLabel}</span>
+          {chips.map((s) => {
+            const sel = s === value;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => pick(s)}
+                aria-pressed={sel}
+                className={`num rounded-md border px-2.5 py-1 text-meta font-medium transition-colors ${
+                  sel
+                    ? 'border-accent/60 bg-accent-soft text-accent-hi'
+                    : 'border-line bg-card text-ink-2 hover:border-ink-3/50 hover:text-ink'
+                }`}
+              >
+                {s}
+              </button>
+            );
+          })}
         </div>
       )}
-
-      {/* Quick Access */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider border-l-4 border-blue-500 pl-3">
-          Quick Access
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {popularStocks.map((symbol, idx) => (
-            <button
-              key={idx}
-              onClick={() => onSelect(symbol)}
-              className={`group px-4 py-3 rounded-xl font-semibold text-sm transition-all transform hover:scale-105 ${
-                selected === symbol
-                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg border-2 border-blue-400'
-                  : 'bg-gray-900/50 text-gray-300 hover:bg-gray-800 hover:text-white border-2 border-gray-700 hover:border-gray-600'
-              }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <span>{symbol}</span>
-                {selected === symbol && (
-                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="text-center py-4 text-gray-400">
-          <div className="inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="mt-2 text-sm">Loading stocks...</p>
-        </div>
-      )}
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(31, 41, 55, 0.5);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(59, 130, 246, 0.5);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(59, 130, 246, 0.8);
-        }
-      `}</style>
     </div>
   );
 };
