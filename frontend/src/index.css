@@ -2,16 +2,124 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ------------------------------------------------------------------
+   Design tokens - Obsidian & Emerald
+   Colours are stored as space-separated RGB channels so Tailwind can
+   apply alpha (bg-accent/10). Change a colour here and it changes
+   everywhere, including charts (they read these variables).
+------------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: 16 20 18; /* #101412 */
+  --surface: 22 28 24; /* #161C18 */
+  --card: 28 36 32; /* #1C2420 */
+  --elevated: 35 45 39; /* #232D27 */
+  --line: 48 59 52; /* #303B34 */
+  --ink: 241 245 242; /* #F1F5F2 */
+  --ink-2: 160 173 164; /* #A0ADA4 */
+  --ink-3: 117 130 121; /* #758279 */
+  --accent: 36 168 121; /* #24A879 */
+  --accent-hi: 67 214 160; /* #43D6A0 */
+  --accent-soft: 25 59 46; /* #193B2E */
+  --on-accent: 9 20 15;
+  --pos: 67 214 160; /* #43D6A0 */
+  --neg: 255 114 124; /* #FF727C */
+  --warn: 240 195 106; /* #F0C36A */
+  --info: 134 185 245; /* #86B9F5 */
+  --series-2: 176 160 240; /* chart-only violet */
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+:root[data-theme='light'] {
+  color-scheme: light;
+  --canvas: 243 245 241; /* #F3F5F1 */
+  --surface: 236 240 234; /* #ECF0EA */
+  --card: 255 255 255; /* #FFFFFF */
+  --elevated: 248 250 247; /* #F8FAF7 */
+  --line: 220 228 221; /* #DCE4DD */
+  --ink: 32 41 35; /* #202923 */
+  --ink-2: 101 113 105; /* #657169 */
+  --ink-3: 112 124 116; /* #707C74 */
+  --accent: 23 107 82; /* #176B52 */
+  --accent-hi: 18 128 96; /* #128060 */
+  --accent-soft: 224 235 227; /* #E0EBE3 */
+  --on-accent: 255 255 255;
+  --pos: 17 120 86;
+  --neg: 201 58 74;
+  --warn: 150 105 12;
+  --info: 41 104 178;
+  --series-2: 109 91 208;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans text-body antialiased;
+    margin: 0;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.35);
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent-hi));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button,
+  a,
+  [role='button'] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  /* quiet scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--line));
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card border border-line rounded-xl shadow-card;
+  }
+  .num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .field {
+    @apply w-full rounded-md border border-line bg-surface text-ui text-ink placeholder:text-ink-3
+      transition-colors hover:border-ink-3/60 focus:border-accent-hi focus:outline-none;
+  }
+  .kbd {
+    @apply num inline-flex items-center rounded border border-line bg-elevated px-1.5 text-meta text-ink-3;
+  }
+}
+
+/* Respect reduced-motion preferences everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
